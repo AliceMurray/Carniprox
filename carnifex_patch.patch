@@ -1,0 +1,114 @@
+From 57788f9e1e7ed20b1a74e9ece895c23dff5f5867 Mon Sep 17 00:00:00 2001
+From: Stefan Kraus <stefan.kraus@fau.de>
+Date: Fri, 25 Jan 2019 17:39:02 +0100
+Subject: [PATCH] frickelpatch
+
+---
+ src/score/client.go |  2 +-
+ src/server/main.go  | 69 +++++++++++++++++++++++----------------------
+ 2 files changed, 37 insertions(+), 34 deletions(-)
+
+diff --git a/src/score/client.go b/src/score/client.go
+index c81dc54..5dbe82b 100644
+--- a/src/score/client.go
++++ b/src/score/client.go
+@@ -75,7 +75,7 @@ func NewJudgeClient(judge *url.URL, username string, password string, insecure b
+ }
+ 
+ func (client *JudgeClient) InjectCid(id int64) {
+-	for _, m := range []APIMethod{SUBMISSIONS, JUDGINGS, PROBLEMS} {
++	for _, m := range []APIMethod{SUBMISSIONS, JUDGINGS, PROBLEMS, TEAMS, CATEGORIES} {
+ 		u := client.urls[m]
+ 		q := u.Query()
+ 		q.Set("cid", strconv.FormatInt(id, 10))
+diff --git a/src/server/main.go b/src/server/main.go
+index c06e4e4..0b00968 100644
+--- a/src/server/main.go
++++ b/src/server/main.go
+@@ -178,38 +178,6 @@ func main() {
+ 	sleep := time.Millisecond*config.Poll_ms
+ 	sanitySleep := time.Second*config.Check_s
+ 
+-	go judge.ChannelJson(Teams, score.TEAMS, sanitySleep, false)
+-	realTeams := Teams
+-	Teams = make(chan []score.Team)
+-	filter := func(team score.Team) bool{
+-		return true
+-	}
+-	if(config.MatchAffiliations != nil) {
+-		regex := regexp.MustCompile(*config.MatchAffiliations)
+-		f := filter
+-		filter = func(team score.Team) bool{
+-			return f(team) && regex.MatchString(team.Affiliation)
+-		}
+-	}
+-	if(config.MatchCategories != nil) {
+-		regex := regexp.MustCompile(*config.MatchCategories)
+-		f := filter
+-		filter = func(team score.Team) bool{
+-			return f(team) && regex.MatchString(strconv.FormatInt(team.Category,10))
+-		}
+-	}
+-	go func() {
+-		for {
+-			var filtered []score.Team
+-			for _, t := range <-realTeams {
+-				if(filter(t)) {
+-					filtered = append(filtered, t)
+-				}
+-			}
+-			Teams <- filtered
+-		}
+-	}()
+-	go judge.ChannelJson(ContestConfig, score.CONFIG, sanitySleep, false)
+ 	go judge.ChannelJson(Contests, score.CONTESTS, sanitySleep, false)
+ 
+ 	go func(Contest chan *score.Contest) {
+@@ -253,8 +221,43 @@ func main() {
+ 
+ 	judge.InjectCid(ContestState.Contest.Id)
+ 
+-	go judge.ChannelJson(Problems, score.PROBLEMS, sanitySleep, false)
++	go judge.ChannelJson(Teams, score.TEAMS, sanitySleep, false)
++
++	realTeams := Teams
++	Teams = make(chan []score.Team)
++	filter := func(team score.Team) bool{
++		return true
++	}
++	if(config.MatchAffiliations != nil) {
++		regex := regexp.MustCompile(*config.MatchAffiliations)
++		f := filter
++		filter = func(team score.Team) bool{
++			return f(team) && regex.MatchString(team.Affiliation)
++		}
++	}
++	if(config.MatchCategories != nil) {
++		regex := regexp.MustCompile(*config.MatchCategories)
++		f := filter
++		filter = func(team score.Team) bool{
++			return f(team) && regex.MatchString(strconv.FormatInt(team.Category,10))
++		}
++	}
++	go func() {
++		for {
++			var filtered []score.Team
++			for _, t := range <-realTeams {
++				if(filter(t)) {
++					filtered = append(filtered, t)
++				}
++			}
++			Teams <- filtered
++		}
++	}()
++
++
+ 	go judge.ChannelJson(Categories, score.CATEGORIES, sanitySleep, false)
++	go judge.ChannelJson(ContestConfig, score.CONFIG, sanitySleep, false)
++	go judge.ChannelJson(Problems, score.PROBLEMS, sanitySleep, false)
+ 	go judge.ChannelJson(submissions, score.SUBMISSIONS, sleep, true)
+ 	go judge.ChannelJson(judgings, score.JUDGINGS, sleep, true)
+ 
+-- 
+2.19.1
+
